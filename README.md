@@ -11,10 +11,18 @@ Verifier provider through Image File Execution Options. Verifier providers get
 one point early enough to replace the image and let the loader snap the Win7
 imports normally.
 
-This is only the loader. You still need the
-[Explorer7](https://github.com/Win10to7/Explorer7-10to7) wrapper (`wrp64.dll`) and
-your own copy of the Windows 7 `explorer.exe` and its `.mui`. Neither is in
-this repo.
+The repo has two parts:
+
+| folder | what | license |
+| ------ | ---- | ------- |
+| repo root | `explorer7.dll`, the image-swap loader | MIT |
+| [`wrapper/`](wrapper) | `wrp64.dll`, our fork of the [Explorer7-10to7](https://github.com/Win10to7/Explorer7-10to7) wrapper | GPLv3 |
+
+Use the wrapper from this repo. The loader is built and tested against this
+fork, and stock Explorer7 wrappers are missing the fixes listed below.
+
+You still need your own copy of the Windows 7 `explorer.exe` and its `.mui`;
+those aren't in this repo.
 
 ## What it does
 
@@ -41,22 +49,57 @@ every Explorer window costs an extra 146-190 ms.
 If anything fails before the swap starts, it logs (debug builds) and leaves
 stock explorer running.
 
+## Wrapper fork
+
+`wrapper/` is Win10to7/Explorer7-10to7 at commit `553f50c`, imported with its
+history, plus one commit of changes on top:
+
+- **Classic theme taskbar stayed composited.** The tray accent helpers handed
+  `SetWindowCompositionAttribute` a pointer to their own dead local, so DWM got
+  stack garbage as the accent state. After a live Aero to Classic switch the
+  taskbar kept a glass accent until explorer restarted.
+- **Tray icons vanished after app updates.** Win7's tray rejects a `NIF_GUID`
+  icon whose exe path no longer matches the remembered one, and never forgets
+  the old path. Apps that update into a new versioned folder (Discord's
+  `app-1.0.xxxx`) lost their icon for good. Same file name in a new folder is
+  now accepted.
+- **Per-theme taskbar style.** With no `Theme` override, a
+  `Theme\<active style name>.msstyles` is used when it exists, so a Windows 10
+  port of a style can get its Windows 7 original on the taskbar and start menu.
+  See `wrapper/README.md`.
+- **UWP icon leak.** `GetUWPIcon` deleted the bitmap and released the shell
+  item factory twice, and didn't check `ImageList_Create`.
+
+Upstream commits after `553f50c` aren't merged.
+
 ## Requirements
 
 - Windows 10 x64. Not tested on Windows 11 or ARM64.
-- MSVC (Build Tools for Visual Studio with the C++ workload) and the Windows SDK.
-  No other dependencies; it links only against `ntdll.lib` with no CRT.
+- MSVC (Build Tools for Visual Studio with the C++ workload, v143 toolset) and
+  the Windows SDK.
 - Windows 7 x64 `explorer.exe` and `en-US\explorer.exe.mui`.
-- The Explorer7 `wrp64.dll` and its setup (`Import Me.reg`, theme folder).
+- The Explorer7 data files (`Import Me.reg`, the `theme` folder, orbs). The
+  wrapper README covers them.
 
 ## Build
+
+Loader:
 
 ```bat
 build.bat
 ```
 
 It finds MSVC through `vswhere` if `cl.exe` isn't already on `PATH` and writes
-`explorer7.dll` next to the script.
+`explorer7.dll` next to the script. It links only against `ntdll.lib`, no CRT.
+
+Wrapper, from a Developer Command Prompt (or with `MSBuild.exe` by full path):
+
+```bat
+msbuild wrapper\explorerwrapper\explorerwrapper.vcxproj /p:Configuration=Release /p:Platform=x64
+```
+
+Output is `wrapper\explorerwrapper\Release\wrp64.dll`. MinHook ships as
+`libMinHook.x64.lib` in the same folder.
 
 ## Install
 
@@ -66,7 +109,7 @@ As Administrator:
 2. Put the Win7 `explorer.exe` at `C:\explorer7\explorer.exe` and its MUI at
    `C:\explorer7\en-US\explorer.exe.mui`. To use another folder, change
    `Explorer7Path` in `explorer7_install.reg`.
-3. Put `wrp64.dll` where explorer can find it (`%windir%`).
+3. Put the `wrp64.dll` you built from `wrapper/` in `%windir%`.
 4. Import `explorer7_install.reg`.
 5. Sign out, or restart `explorer.exe`.
 
@@ -97,5 +140,6 @@ then run `explorer.exe`.
 
 ## License
 
-MIT, see [LICENSE](LICENSE). This covers the loader only. Explorer7 is GPLv3,
-and the Windows 7 files are Microsoft's.
+The loader (repo root) is MIT, see [LICENSE](LICENSE). The wrapper in
+`wrapper/` is GPLv3, see [wrapper/LICENSE](wrapper/LICENSE). The Windows 7
+files are Microsoft's and aren't included.
