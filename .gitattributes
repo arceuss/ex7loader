@@ -1,4 +1,5 @@
-* text=auto
-# cmd.exe mis-parses labels and blocks in LF batch files, keep these CRLF on checkout
+# cmd.exe mis-parses labels and blocks in LF batch files, keep these CRLF on checkout.
+# no repo-wide text=auto: the wrapper's .vcxproj files are stored CRLF upstream and
+# normalizing them would show as changes on every checkout.
 *.bat text eol=crlf
 *.reg text eol=crlf
