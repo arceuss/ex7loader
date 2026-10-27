@@ -1,0 +1,134 @@
+#include "OptionConfig.h"
+#include "ThemeManager.h"
+
+// Ittr: Migrated all configuration here to make things clearer in dllmain
+
+// Individual option definitions
+bool s_ClassicTheme;
+bool s_DisableComposition;
+int s_EnableImmersiveShellStack;
+bool s_UseTaskbarPinning;
+bool s_ShowStoreAppsOnTaskbar;
+bool s_ShowStoreAppsInStart;
+int s_AcrylicAlt;
+int s_ColorizationOptions;
+bool s_OverrideAlpha;
+DWORD s_AlphaValue;
+bool s_UseDCompFlyouts;
+
+static bool s_ClassicThemeSetting;
+static bool s_DisableCompositionSetting;
+
+void RefreshThemeConfiguration()
+{
+	bool forceClassicTheme = s_ClassicThemeSetting || !IsThemeActive() || IsHighContrastEnabled();
+
+	s_DisableComposition = s_DisableCompositionSetting || forceClassicTheme;
+	s_ClassicTheme = forceClassicTheme;
+	if (forceClassicTheme)
+	{
+		dbgprintf(L"Disabling themes...");
+	}
+}
+
+// This is called at the beginning of the library's execution
+// The format for each setting is generally:
+// - DWORD init with default value
+// - Applicable registry value is queried 
+// - Option definition gets set:
+//	-> If the value exists in the registry, it will be set
+//	-> Otherwise, the default value specified with the DWORD init is set
+void InitializeConfiguration()
+{
+	// Immersive shell stack for modern apps (e.g. PC settings)
+	// - Defaults to enabled (1)
+	DWORD dwEnableUWP = 1;
+	g_registry.QueryValue(L"EnableImmersive", (LPBYTE)&dwEnableUWP, sizeof(DWORD));
+#ifndef PRERELEASE_COPY
+	if (dwEnableUWP == 2) // mode 2 is for debugging only, not release builds!
+	{
+		dwEnableUWP = 0; // change to fully disabled state as though 2 doesn't exist
+	}
+#endif
+	s_EnableImmersiveShellStack = dwEnableUWP;
+
+	// Taskbar pinning
+	// - Defaults to enabled (1)
+	// - When disabled, the behaviour is similar to Vista and earlier
+	// - Moreover, when disabled, certain jumplist actions are not shown to prevent other issues
+	DWORD dwTaskbarPinning = 1;
+	g_registry.QueryValue(L"UseTaskbarPinning", (LPBYTE)&dwTaskbarPinning, sizeof(DWORD));
+	s_UseTaskbarPinning = dwTaskbarPinning;
+
+	// Store apps on taskbar
+	// - Defaults to the same value used by immersive stack
+	// - Only has an effect when UWP is enabled, otherwise this is always off
+	DWORD dwStoreAppsOnTaskbar = s_EnableImmersiveShellStack;
+	g_registry.QueryValue(L"StoreAppsOnTaskbar", (LPBYTE)&dwStoreAppsOnTaskbar, sizeof(DWORD));
+	s_ShowStoreAppsOnTaskbar = dwStoreAppsOnTaskbar;
+	
+	// Enable modern apps in start menu programs list
+	// - Defaults to enabled (1)
+	// - Only applies on RS1 onwards, TH2 and earlier use the native program list
+	// - When disabled, the behaviour is similar to 8.1 and earlier
+	DWORD dwStoreAppsInStart = 1;
+	g_registry.QueryValue(L"StoreAppsInStart", (LPBYTE)&dwStoreAppsInStart, sizeof(DWORD));
+	s_ShowStoreAppsInStart = dwStoreAppsInStart;
+
+	// Disable composition effects (e.g. Aero glass)
+	// - Defaults to disabled (0)
+	DWORD dwDisableComposition = 0;
+	g_registry.QueryValue(L"DisableComposition", (LPBYTE)&dwDisableComposition, sizeof(DWORD));
+	s_DisableCompositionSetting = (dwDisableComposition != 0);
+
+	// Disable themes (e.g. aero.msstyles)
+	// - Defaults to disabled (0)
+	DWORD dwClassicTheme = 0;
+	g_registry.QueryValue(L"ClassicTheme", (LPBYTE)&dwClassicTheme, sizeof(DWORD));
+	s_ClassicThemeSetting = (dwClassicTheme != 0);
+	RefreshThemeConfiguration();
+
+	// Colorization configuration
+	// - Defaults to regular (0)
+	DWORD dwColorizationOptions = 0;
+	g_registry.QueryValue(L"ColorizationOptions", (LPBYTE)&dwColorizationOptions, sizeof(DWORD));
+	if (dwColorizationOptions < 6)
+	{
+		// Acrylic is not supported by Win32 API until RS4, so falls back to Translucent.
+		if (dwColorizationOptions == 3 && g_osVersion.BuildNumber() < 17134)
+		{
+			s_ColorizationOptions = 1;
+		}
+		else
+		{
+			s_ColorizationOptions = dwColorizationOptions;
+		}
+	}
+
+	// Composited colorization alpha override
+	// - Defaults to disabled (0)
+	DWORD dwOverrideAlpha = 0;
+	g_registry.QueryValue(L"OverrideAlpha", (LPBYTE)&dwOverrideAlpha, sizeof(DWORD));
+	s_OverrideAlpha = dwOverrideAlpha;
+
+	// Composited colorization alpha override value
+	// - Defaults to Windows 7 alpha value (0x6B)
+	// - Only used when OverrideAlpha = 1
+	DWORD dwAlphaValue = 0x6B;
+	g_registry.QueryValue(L"AlphaValue", (LPBYTE)&dwAlphaValue, sizeof(DWORD));
+	s_AlphaValue = dwAlphaValue;
+	
+	// Select appropriate acrylic style to use
+	// - Defaults to regular (0)
+	// - Only used when ColorizationOptions = 3
+	DWORD dwAcrylicAlt = 0;
+	g_registry.QueryValue(L"AcrylicColorization", (LPBYTE)&dwAcrylicAlt, sizeof(DWORD));
+	s_AcrylicAlt = dwAcrylicAlt;
+
+	// DComp flyouts
+	// - Defaults to the same value used by immersive stack
+	// - Only has an effect when UWP is enabled, otherwise this is always off
+	DWORD dwUseDCompFlyouts = s_EnableImmersiveShellStack;
+	g_registry.QueryValue(L"UseDCompFlyouts", (LPBYTE)&dwUseDCompFlyouts, sizeof(DWORD));
+	s_UseDCompFlyouts = dwUseDCompFlyouts;
+}
