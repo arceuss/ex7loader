@@ -1,0 +1,41 @@
+Windows Registry Editor Version 5.00
+
+; explorer7_install.reg
+;
+; Enables the Application Verifier hook on explorer.exe so explorer7.dll loads at
+; DLL_PROCESS_VERIFIER and swaps the Windows 7 explorer image in place.
+;
+; Prerequisites (run as Administrator):
+;   1. Build explorer7.dll and copy it to %windir%\System32.
+;   2. Win7 x64 explorer.exe at C:\explorer7\explorer.exe, with its MUI at
+;      C:\explorer7\en-US\explorer.exe.mui (the loader redirects MUI opens there;
+;      a .mui is checksum-bound to its binary, so the Win10 one fails against it).
+;   3. The Explorer7 wrapper wrp64.dll where explorer will find it (%windir%
+;      and/or %windir%\System32).
+;
+; GlobalFlag = 0x100 (FLG_APPLICATION_VERIFIER) is used ONLY for its timing:
+; DLL_PROCESS_VERIFIER is the one hook point that runs before the loader snaps
+; the main image's imports. explorer7.dll disarms the verifier itself at
+; DLL_PROCESS_ATTACH by clearing PEB->NtGlobalFlag & 0x100.
+;
+; VerifierFlags MUST BE NONZERO -- this one is easy to get wrong.
+;   ntdll honours this value only when it is nonzero. Leaving it absent, or
+;   setting it to 0, keeps the hardcoded default 0x48004, whose 0x8000 bit makes
+;   AVrfpEnableHeapVerifier switch on light PAGE HEAP (NtGlobalFlag 0x02000000).
+;   Page heap captures a full stack backtrace on EVERY heap alloc/free: measured
+;   at ~28% of explorer's CPU and ~110-140 ms per Explorer window.
+;   0x40004 is the default with the page-heap bit removed.
+;   (Note the disarm above does NOT cover this -- page heap runs off a different
+;   NtGlobalFlag bit than the verifier bit.)
+;
+; MitigationOptions bits 40-43 = 2 = CONTROL_FLOW_GUARD ALWAYS_OFF. Required:
+;   the process is created from the CFG-enabled Win10 binary, so without this the
+;   swapped-in Win7 code fast-fails at msvcrt!initterm (RtlFailFast2, rcx=0xA).
+;   The loader's runtime NtSetInformationVirtualMemory CFG marking is NOT enough.
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\explorer.exe]
+"GlobalFlag"=dword:00000100
+"VerifierDlls"="explorer7"
+"Explorer7Path"="C:\\explorer7"
+"VerifierFlags"=dword:00040004
+"MitigationOptions"=hex(b):00,00,00,00,00,02,00,00

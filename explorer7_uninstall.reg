@@ -1,0 +1,19 @@
+Windows Registry Editor Version 5.00
+
+; explorer7_uninstall.reg
+; Reverts explorer7_install.reg by removing every value it added, including
+; VerifierFlags and MitigationOptions. Leaving MitigationOptions behind keeps
+; CFG forced off for stock explorer.exe.
+; The (now empty) explorer.exe IFEO subkey is left in place so any other
+; IFEO settings on explorer.exe are untouched. Run as Administrator, then
+; sign out / restart explorer.exe for it to take effect.
+;
+; If you instead want the whole subkey gone, replace the block below with:
+;   [-HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\explorer.exe]
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\explorer.exe]
+"GlobalFlag"=-
+"VerifierDlls"=-
+"Explorer7Path"=-
+"VerifierFlags"=-
+"MitigationOptions"=-

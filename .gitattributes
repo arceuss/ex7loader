@@ -1,0 +1,4 @@
+* text=auto
+# cmd.exe mis-parses labels and blocks in LF batch files, keep these CRLF on checkout
+*.bat text eol=crlf
+*.reg text eol=crlf

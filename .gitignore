@@ -1,0 +1,11 @@
+# this folder is a scratch workspace (ida dbs, microsoft binaries, backups,
+# logs). ignore everything and allowlist only the loader itself.
+*
+!.gitignore
+!.gitattributes
+!README.md
+!LICENSE
+!explorer7.c
+!build.bat
+!explorer7_install.reg
+!explorer7_uninstall.reg
