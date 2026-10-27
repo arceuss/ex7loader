@@ -9,3 +9,5 @@
 !build.bat
 !explorer7_install.reg
 !explorer7_uninstall.reg
+!wrapper/
+!wrapper/**

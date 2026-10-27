@@ -567,16 +567,14 @@ HICON GetUWPIcon(HWND a2)
 			if (SUCCEEDED(hr))
 			{
 				HIMAGELIST hImageList = ImageList_Create(size.cx, size.cy, ILC_COLOR32, 1, 0);
-				if (ImageList_Add(hImageList, hb, NULL) != -1)
+				if (hImageList)
 				{
-					HICON hc = ImageList_GetIcon(hImageList, 0, 0);
+					if (ImageList_Add(hImageList, hb, NULL) != -1)
+					{
+						// set
+						icon = ImageList_GetIcon(hImageList, 0, 0);
+					}
 					ImageList_Destroy(hImageList);
-
-					// set
-					icon = hc;
-
-					DeleteObject(hb);
-					psiif->Release();
 				}
 				DeleteObject(hb);
 			}

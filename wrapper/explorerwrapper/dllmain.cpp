@@ -203,6 +203,66 @@ void HookTrayThread(void)
 	}
 }
 
+// CTrayItemRegistry::DoesGUIDIconMatchPathOrIdentity(CTrayItem*, INT_PTR) from the win7 x64 explorer
+// (rva 0x1d508 in the shipped 7 build). CTrayNotify::_InsertNotify calls it when a NIF_GUID icon
+// matches a remembered icon from TrayNotify7\IconStreams. on 0 it drops the add and Shell_NotifyIcon
+// fails, and since the stale record is never replaced the icon stays gone for good.
+// apps that update into a new versioned folder (discord's app-1.0.xxxx) keep the same guid but get
+// a new path every update, so they trip this the first time they update.
+typedef int (__fastcall *DoesGUIDIconMatchPathOrIdentity_t)(void *pRegistry, BYTE *pItem, INT_PTR index);
+static DoesGUIDIconMatchPathOrIdentity_t DoesGUIDIconMatchPathOrIdentity_orig;
+typedef void *(WINAPI *DPA_GetPtr_t)(HANDLE hdpa, INT_PTR i);
+static DPA_GetPtr_t DPA_GetPtr_fn;
+
+// CTrayItem layout, from _InsertNotify/_FillPersistData in the same build
+#define TRAYITEM_PATH_OFFSET     48    // WCHAR[260], full exe path of the caller
+#define TRAYITEM_IDENTITY_OFFSET 2336  // TNIdentity, 0x208 bytes; all zero reads as "not cached"
+#define TRAYITEM_IDENTITY_SIZE   0x208
+
+int __fastcall DoesGUIDIconMatchPathOrIdentity_hook(void *pRegistry, BYTE *pItem, INT_PTR index)
+{
+	int ret = DoesGUIDIconMatchPathOrIdentity_orig(pRegistry, pItem, index);
+	if (ret || !DPA_GetPtr_fn)
+		return ret;
+
+	// the remembered record starts with its own WCHAR[260] path (possibly known-folder relative)
+	LPCWSTR cachedPath = (LPCWSTR)DPA_GetPtr_fn(*(HANDLE *)pRegistry, index);
+	LPCWSTR newPath = (LPCWSTR)(pItem + TRAYITEM_PATH_OFFSET);
+	if (!cachedPath || !*cachedPath || !*newPath)
+		return ret;
+
+	// only same exe name moving folders gets rebound, a different binary claiming the guid still fails
+	if (lstrcmpiW(PathFindFileNameW(cachedPath), PathFindFileNameW(newPath)) != 0)
+		return ret;
+
+	// don't let the old location's identity ride along, zero makes explorer recompute it from the new path
+	ZeroMemory(pItem + TRAYITEM_IDENTITY_OFFSET, TRAYITEM_IDENTITY_SIZE);
+	dbgprintf(L"tray guid icon moved, rebinding %s -> %s", cachedPath, newPath);
+	return 1;
+}
+
+void HookTrayGuidPathCheck(void)
+{
+	DPA_GetPtr_fn = (DPA_GetPtr_t)GetProcAddress(GetModuleHandle(L"comctl32.dll"), "DPA_GetPtr");
+	DoesGUIDIconMatchPathOrIdentity_orig = (DoesGUIDIconMatchPathOrIdentity_t)FindPattern(
+		(uintptr_t)GetModuleHandle(NULL),
+		"48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 41 54 41 55 48 83 EC 30 48 8B 09 48 8B EA 49 8B D0 33 DB FF 15"
+	);
+
+	// no match means a different explorer build, leave win7's behaviour alone
+	if (!DoesGUIDIconMatchPathOrIdentity_orig || !DPA_GetPtr_fn)
+	{
+		dbgprintf(L"tray guid path check not found, not hooked");
+		return;
+	}
+
+	MH_CreateHook(
+		(void*)DoesGUIDIconMatchPathOrIdentity_orig,
+		(void*)DoesGUIDIconMatchPathOrIdentity_hook,
+		(void**)&DoesGUIDIconMatchPathOrIdentity_orig
+	);
+}
+
 void GetOrbDPIAndPos(LPWSTR fName)
 {
 	APPBARDATA abd;
@@ -391,6 +451,9 @@ void HookAPIs() // largely a legacy function now
 
 	// Prevent theme overrides applying to file explorer *VERY IMPORTANT*
 	HookTrayThread();
+
+	// Let tray icons keep their guid when the app updates into a new folder
+	HookTrayGuidPathCheck();
 
 	// 1. shell32.dll - hack created startmenupin instance
 	// 2. shell32.dll - patch delayload stuff

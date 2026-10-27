@@ -120,7 +120,7 @@ These options are located under `HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\Cu
 
 | Name | Type | Description | Default Value |
 | ---- | ---- | ----------- | ------------- |
-| Theme | REG_SZ / REG_EXPAND_SZ | Optional inactive theme override. A bare value like `"custom"` loads `Themes\custom.msstyles` next to `explorer.exe`, falling back to the legacy `Theme\custom.msstyles` folder if present; a full path loads that `.msstyles` directly. When unset, explorer7 automatically selects `aero.msstyles`, `aerodark.msstyles`, or `aerolite.msstyles`. | **automatic** |
+| Theme | REG_SZ / REG_EXPAND_SZ | Optional inactive theme override. A bare value like `"custom"` loads `Theme\custom.msstyles` from the theme folder (see [Theme support](#theme-support)); a full path loads that `.msstyles` directly. The override is fixed, it doesn't follow theme switches. When unset, explorer7 picks the file automatically. | **automatic** |
 | OrbDirectory | REG_SZ | Either the orb images directory to use under `explorer7\orbs`, or a `.orb` PE file containing bitmap resources. Directory values are relative to the installation directory. For example, `"blue"` loads from `explorer7\orbs\blue\`, `"colors\green"` loads from `explorer7\orbs\colors\green\`, `"Windows 7.orb"` loads `explorer7\Windows 7.orb`, and a full path like `C:\Themes\Windows 7.orb` is also supported. If this is not specified, explorer7 first looks for `explorer7\orbs\aero.orb` and uses it when present; otherwise the internal explorer image is used. | **default** |
 | DisableComposition | REG_DWORD | When set to 1, explorer7 will act as if the Desktop Window Manager is not running. | **0** |
 | ClassicTheme | REG_DWORD | When set to 1, explorer7 will use the Windows Classic theme. | **0** |
@@ -135,17 +135,35 @@ These options are located under `HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\Cu
 
 ## Theme support
 
-explorer7 loads the inactive taskbar/start menu theme from the `Theme` folder next to `explorer.exe`, falling back to the legacy singular `Theme` folder if that is what the package contains. By default it automatically picks the file that matches the active Windows theme, and caches the last detected file in `ThemeCache` so startup can reuse it if Windows has not exposed the active theme yet:
+explorer7 draws the taskbar and start menu with its own copy of a Windows 7 style (the "inactive theme"), loaded from the `Theme` folder next to `explorer.exe`. Where that is depends on how explorer7 is installed:
+
+| install | theme folder |
+| ------- | ------------ |
+| Explorer7 Loader (`explorer.exe` and `wrp64.dll` running as `C:\Windows\explorer.exe` / `C:\Windows\WRP64.dll`) | `C:\Windows\Theme\` |
+| manual install (explorer7's `explorer.exe` and `wrp64.dll` in their own folder) | `Theme\` in that folder |
+
+The folder is taken from `explorer.exe`'s own path, not the working directory, so with the loader it's always `C:\Windows\Theme\`, whatever folder the loader package was installed to.
+
+Picking the file when `Theme` isn't set, every time the Windows theme changes:
+
+1. the active Windows style's path contains `AeroDark` -> `aerodark.msstyles`, or `Aerolite` -> `aerolite.msstyles`;
+2. otherwise, a file in the theme folder with the same name as the active Windows style is used. With `Dream.msstyles` active (the Windows 10 port), `Theme\Dream.msstyles` (the Windows 7 original) is loaded;
+3. otherwise `aero.msstyles`.
+
+The last pick is cached in `ThemeCache` so startup can reuse it if Windows hasn't exposed the active theme yet.
 
 ```
-explorer.exe folder/
-├─ Theme/        (preferred)
-│  ├─ aero.msstyles
-│  ├─ aerodark.msstyles
-│  ├─ aerolite.msstyles
+C:\Windows\Theme\          (loader install)
+├─ aero.msstyles
+├─ aerodark.msstyles
+├─ aerolite.msstyles
+├─ Dream.msstyles          (picked while Dream.msstyles is the active Windows style)
+├─ en-US\
+│  ├─ aero.msstyles.mui
+│  ├─ Dream.msstyles.mui
 ```
 
-If `Theme` is set under `HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced`, that value overrides the automatic switch. For example, `Theme=custom` loads `Theme\custom.msstyles`, while `Theme=C:\Theme\custom.msstyles` loads that full path directly.
+So to give a ported theme its own taskbar and start menu, name the Windows 10 port and the Windows 7 original the same and put the original in the theme folder. If `Theme` is set under `HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced`, that value is used instead and the automatic pick is off. For example, `Theme=custom` loads `Theme\custom.msstyles`, while `Theme=C:\Theme\custom.msstyles` loads that full path directly.
 
 If applicable, you **must** include the "en-US" folder that comes along with your .msstyles file, otherwise the theme won't be applied. Themes from Windows 8.1 and later do work, but will not have the proper classes for the start menu, an issue which cannot currently be resolved.
 

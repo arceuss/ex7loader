@@ -124,11 +124,29 @@ static const LPCWSTR c_szExplorerAdvancedSubkey = L"SOFTWARE\\Microsoft\\Windows
 static const LPCWSTR c_szExplorer7Theme = L"Theme";
 static const LPCWSTR c_szExplorer7LastTheme = L"ThemeCache";
 
+// the Theme folder next to explorer.exe (its module path, NOT the working directory), with a trailing backslash.
+static void GetExplorer7ThemeFolder(LPWSTR szFolder, DWORD cchFolder)
+{
+	GetModuleFileNameW(NULL, szFolder, cchFolder);
+	WCHAR *backslash = StrRChrW(szFolder, NULL, L'\\');
+	if (backslash && *backslash == L'\\')
+		*backslash = L'\0';
+
+	StringCchCatW(szFolder, cchFolder, L"\\Theme\\");
+}
+
+// a bare .msstyles file name that exists in the Theme folder. anything with a path in it is refused,
+// the cache and the active theme's name must not point outside the folder.
 static bool IsExplorer7ThemeFileName(LPCWSTR fileName)
 {
-	return lstrcmpiW(fileName, L"aero.msstyles") == 0 ||
-		lstrcmpiW(fileName, L"aerodark.msstyles") == 0 ||
-		lstrcmpiW(fileName, L"aerolite.msstyles") == 0;
+	if (!*fileName || StrChrW(fileName, L'\\') || StrChrW(fileName, L'/') || StrChrW(fileName, L':'))
+		return false;
+	if (lstrcmpiW(PathFindExtensionW(fileName), L".msstyles") != 0)
+		return false;
+
+	WCHAR szPath[MAX_PATH * 2];
+	GetExplorer7ThemeFolder(szPath, ARRAYSIZE(szPath));
+	return SUCCEEDED(StringCchCatW(szPath, ARRAYSIZE(szPath), fileName)) && PathFileExistsW(szPath);
 }
 
 static bool ReadExplorer7LastTheme(LPWSTR fileName, DWORD cchFileName)
@@ -174,10 +192,16 @@ static void GetExplorer7ThemeFileName(LPWSTR fileName, DWORD cchFileName)
 	WCHAR szCurrentTheme[MAX_PATH];
 	if (SUCCEEDED(GetCurrentThemeName(szCurrentTheme, ARRAYSIZE(szCurrentTheme), NULL, 0, NULL, 0)))
 	{
+		// the aero variants keep their old substring match, so their behaviour doesn't change.
+		// any other active style uses the Theme folder file with the same name if there is one:
+		// Dream.msstyles active -> Theme\Dream.msstyles, its windows 7 original.
+		LPCWSTR activeFileName = PathFindFileNameW(szCurrentTheme);
 		if (StrStrIW(szCurrentTheme, L"AeroDark"))
 			StringCchCopyW(fileName, cchFileName, L"aerodark.msstyles");
 		else if (StrStrIW(szCurrentTheme, L"Aerolite"))
 			StringCchCopyW(fileName, cchFileName, L"aerolite.msstyles");
+		else if (IsExplorer7ThemeFileName(activeFileName))
+			StringCchCopyW(fileName, cchFileName, activeFileName);
 		else
 			StringCchCopyW(fileName, cchFileName, L"aero.msstyles");
 
@@ -201,25 +225,14 @@ static void GetExplorer7ThemePath(LPWSTR szThemePath, DWORD cchThemePath)
 		WCHAR szThemeFileName[MAX_PATH];
 		StringCchCopyW(szThemeFileName, ARRAYSIZE(szThemeFileName), szThemePath);
 
-		GetModuleFileNameW(NULL, szThemePath, cchThemePath);
-		WCHAR *backslash = StrRChrW(szThemePath, NULL, L'\\');
-		if (backslash && *backslash == L'\\')
-			*backslash = L'\0';
-
-		StringCchCatW(szThemePath, cchThemePath, L"\\Theme\\");
+		GetExplorer7ThemeFolder(szThemePath, cchThemePath);
 		StringCchCatW(szThemePath, cchThemePath, szThemeFileName);
 		if (!*PathFindExtensionW(szThemePath))
 			StringCchCatW(szThemePath, cchThemePath, L".msstyles");
 		return;
 	}
 
-	// get directory of explorer.exe (NOT the working directory)
-	GetModuleFileNameW(NULL, szThemePath, cchThemePath);
-	WCHAR *backslash = StrRChrW(szThemePath, NULL, L'\\');
-	if (backslash && *backslash == L'\\')
-		*backslash = L'\0';
-
-	StringCchCatW(szThemePath, cchThemePath, L"\\Theme\\");
+	GetExplorer7ThemeFolder(szThemePath, cchThemePath);
 
 	WCHAR szThemeFileName[MAX_PATH];
 	GetExplorer7ThemeFileName(szThemeFileName, ARRAYSIZE(szThemeFileName));
